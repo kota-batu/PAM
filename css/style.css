@@ -1,0 +1,693 @@
+/******************************************************************
+ * FILE    : style.css
+ * PROJECT : PAM Finance (Buku Kas PAM)
+ *
+ * ================================================================
+ * SATU FILE CSS DIPAKAI SEMUA HALAMAN.
+ * SKEMA WARNA: MERAH - PUTIH - BIRU (PROFESIONAL/KORPORAT).
+ * ANGKA RUPIAH SELALU PAKAI FONT MONOSPACE SUPAYA SEJAJAR RAPI.
+ * ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ================================================================
+ * DESIGN TOKENS
+ * ================================================================ */
+
+:root {
+  /* Netral / teks */
+  --color-ink: #1B2430;
+  --color-ink-soft: #5B6472;
+  --color-paper: #F4F6FA;
+  --color-paper-card: #FFFFFF;
+  --color-line: #DCE2EA;
+
+  /* Biru — warna utama/brand */
+  --color-brand: #1F3A5C;
+  --color-brand-dark: #14283F;
+  --color-brand-soft: #E4EBF3;
+
+  /* Biru baja — status netral (CUTI) */
+  --color-steel: #4A6FA5;
+  --color-steel-soft: #E8EEF6;
+
+  /* Merah — aksen bahaya/negatif */
+  --color-red: #C0263A;
+  --color-red-dark: #96182A;
+  --color-red-soft: #FBE4E7;
+
+  /* Tipografi */
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+  /* Radius & shadow */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(20, 40, 63, 0.06), 0 1px 12px rgba(20, 40, 63, 0.04);
+  --shadow-hover: 0 4px 16px rgba(20, 40, 63, 0.12);
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --header-height: 60px;
+}
+
+/* ================================================================
+ * RESET & BASE
+ * ================================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  color: var(--color-ink);
+  margin: 0 0 8px 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: 28px; }
+h2 { font-size: 22px; }
+h3 { font-size: 17px; }
+
+p { margin: 0 0 12px 0; color: var(--color-ink-soft); }
+
+a {
+  color: var(--color-brand);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+.rp, .angka, td.rp, span.rp {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ================================================================
+ * LAYOUT UTAMA (SIDEBAR + KONTEN)
+ * ================================================================ */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--color-brand-dark);
+  color: #E7ECF2;
+  flex-shrink: 0;
+  padding: 24px 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px 20px 24px;
+  border-bottom: 1px solid rgba(231, 236, 242, 0.14);
+  margin-bottom: 16px;
+}
+
+.sidebar-brand img.logo {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px;
+  flex-shrink: 0;
+}
+
+.sidebar-brand .brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.sidebar-brand .app-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.sidebar-brand .org-name {
+  font-size: 11px;
+  color: #A9B9CC;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.nav-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-menu a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 24px;
+  color: #B9C6D6;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-menu a:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-decoration: none;
+}
+
+.nav-menu a.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-left-color: var(--color-red);
+}
+
+.nav-menu .icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.main-content {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: 28px 32px 60px 32px;
+  max-width: 1200px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.page-header .subtitle {
+  color: var(--color-ink-soft);
+  font-size: 14px;
+  margin-top: -4px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-paper-card);
+  border: 1px solid var(--color-line);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+.user-chip strong { color: var(--color-ink); }
+
+@media (max-width: 860px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    padding: 16px 0;
+  }
+  .sidebar-brand { padding: 0 16px 16px 16px; }
+  .nav-menu { display: flex; flex-wrap: wrap; }
+  .nav-menu a { padding: 8px 14px; border-left: none; border-bottom: 2px solid transparent; }
+  .nav-menu a.active { border-left: none; border-bottom-color: var(--color-red); }
+  .app-shell { flex-direction: column; }
+  .main-content { margin-left: 0; padding: 20px 16px 40px 16px; }
+}
+
+
+/* ================================================================
+ * KARTU (CARD)
+ * ================================================================ */
+
+.card {
+  background: var(--color-paper-card);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+
+.card-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.card-title h3 { margin: 0; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--color-paper-card);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 3px;
+  background: var(--color-brand);
+}
+
+.stat-card.red::before { background: var(--color-red); }
+.stat-card.steel::before { background: var(--color-steel); }
+
+.stat-label {
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  margin-top: 4px;
+}
+
+
+/* ================================================================
+ * TOMBOL
+ * ================================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+  text-decoration: none;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--color-brand);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--color-brand-dark); text-decoration: none; }
+
+.btn-secondary {
+  background: var(--color-paper-card);
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+.btn-secondary:hover { background: var(--color-paper); text-decoration: none; }
+
+.btn-danger {
+  background: var(--color-red-soft);
+  color: var(--color-red);
+  border-color: transparent;
+}
+.btn-danger:hover { background: var(--color-red); color: #fff; text-decoration: none; }
+
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* ================================================================
+ * FORM
+ * ================================================================ */
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 6px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  margin-top: 4px;
+}
+
+.input, select.input, textarea.input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper-card);
+  color: var(--color-ink);
+  transition: border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--color-brand);
+  outline: none;
+}
+
+.input.rp-input {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .form-row { grid-template-columns: 1fr; }
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stepper button {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-line);
+  background: var(--color-paper-card);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-brand);
+  cursor: pointer;
+}
+.stepper button:hover { background: var(--color-brand-soft); }
+
+.stepper .stepper-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  min-width: 130px;
+  text-align: center;
+}
+
+
+/* ================================================================
+ * TABEL
+ * ================================================================ */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-soft);
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--color-line);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  vertical-align: middle;
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover { background: var(--color-paper); }
+
+.table-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-ink-soft);
+}
+
+
+/* ================================================================
+ * BADGE STATUS — SIGNATURE ELEMENT
+ * Biru = positif (AKTIF/LUNAS), Biru baja = netral (CUTI),
+ * Merah = negatif (KELUAR/BELUM LUNAS).
+ * ================================================================ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge-aktif, .badge-lunas, .badge-success {
+  background: var(--color-brand-soft);
+  color: var(--color-brand-dark);
+}
+
+.badge-cuti, .badge-warning {
+  background: var(--color-steel-soft);
+  color: var(--color-steel);
+}
+
+.badge-keluar, .badge-belum-lunas, .badge-danger {
+  background: var(--color-red-soft);
+  color: var(--color-red);
+}
+
+
+/* ================================================================
+ * HALAMAN LOGIN
+ * ================================================================ */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-paper);
+  padding: 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--color-paper-card);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hover);
+  padding: 36px 32px;
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.auth-brand img.logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  margin-bottom: 12px;
+}
+
+.auth-brand .app-name {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.auth-brand .org-name {
+  font-size: 13px;
+  color: var(--color-ink-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.auth-card .btn { width: 100%; margin-top: 8px; }
+
+.auth-switch {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--color-ink-soft);
+}
+
+
+/* ================================================================
+ * PESAN ERROR / SUKSES (ALERT)
+ * ================================================================ */
+
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+
+.alert.show { display: block; }
+
+.alert-error {
+  background: var(--color-red-soft);
+  color: var(--color-red);
+  border: 1px solid rgba(192, 38, 58, 0.2);
+}
+
+.alert-success {
+  background: var(--color-brand-soft);
+  color: var(--color-brand-dark);
+  border: 1px solid rgba(31, 58, 92, 0.2);
+}
+
+
+/* ================================================================
+ * MODAL (dipakai konfirmasi hapus/batalkan)
+ * ================================================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 40, 63, 0.5);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 100;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+
+.modal-overlay.show { display: flex; }
+
+.modal-box {
+  background: var(--color-paper-card);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--shadow-hover);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+
+/* ================================================================
+ * UTILITAS KECIL
+ * ================================================================ */
+
+.text-muted { color: var(--color-ink-soft); }
+.text-danger { color: var(--color-red); }
+.text-brand { color: var(--color-brand); }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.mt-0 { margin-top: 0; }
+.mb-0 { margin-bottom: 0; }
+.empty-state {
+  text-align: center;
+  padding: 50px 20px;
+  color: var(--color-ink-soft);
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; display: block; }

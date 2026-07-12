@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendor - Anggota Aktif PAM</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    .tab-btn.active { background: var(--color-brand); color: #fff; }
+    .tree-instansi { margin-bottom: 14px; }
+    .tree-instansi > summary { cursor: pointer; font-weight: 700; font-family: var(--font-display); font-size: 16px; padding: 8px 0; }
+    .tree-leader { margin-left: 18px; margin-bottom: 6px; }
+    .tree-leader > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+    .tree-team-item { margin-left: 36px; padding: 4px 0; cursor: pointer; color: var(--color-brand); }
+    .tree-team-item:hover { text-decoration: underline; }
+    #qr-reader { width: 100%; max-width: 360px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <main class="main-content" style="margin-left:0; max-width:800px;">
+    <div class="page-header">
+      <div>
+        <h1>Verifikasi Anggota PAM</h1>
+        <div class="subtitle">Halaman Vendor</div>
+      </div>
+      <a href="pilih.html" class="btn btn-secondary btn-sm">← Kembali</a>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+      <button class="btn btn-secondary tab-btn active" data-tab="search">🔍 Search</button>
+      <button class="btn btn-secondary tab-btn" data-tab="scan">📷 QR Reader</button>
+      <button class="btn btn-secondary tab-btn" data-tab="directory">🌳 Directory</button>
+    </div>
+
+    <div class="tab-content" id="tab-search">
+      <div class="card">
+        <div class="form-group mb-0">
+          <input type="text" id="search-input" class="input" placeholder="Ketik nama anggota...">
+        </div>
+      </div>
+      <div id="search-results"></div>
+    </div>
+
+    <div class="tab-content" id="tab-scan" style="display:none;">
+      <div class="card" style="text-align:center;">
+        <div id="qr-reader"></div>
+        <button class="btn btn-primary" id="btn-start-scan" style="margin-top:12px;">Mulai Scan</button>
+        <button class="btn btn-secondary" id="btn-stop-scan" style="margin-top:12px; display:none;">Berhenti</button>
+        <div id="scan-result" style="margin-top:16px;"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-directory" style="display:none;">
+      <div class="card" id="directory-container">
+        <div class="empty-state">Memuat direktori...</div>
+      </div>
+    </div>
+
+    <div class="card" id="card-result-box" style="display:none; text-align:center;">
+      <canvas id="result-canvas" data-card-canvas style="width:100%; max-width:340px; height:auto; border-radius:12px;"></canvas>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api-public.js"></script>
+  <script src="js/card-engine.js"></script>
+  <script src="js/vendor.js"></script>
+  <script>
+    requirePin();
+    initVendorPage();
+  </script>
+</body>
+</html>

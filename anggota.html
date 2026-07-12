@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anggota - Anggota Aktif PAM</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <main class="main-content" style="margin-left:0; max-width:500px;">
+    <div class="page-header">
+      <div>
+        <h1>Kartu Saya</h1>
+        <div class="subtitle">Halaman Anggota</div>
+      </div>
+      <a href="pilih.html" class="btn btn-secondary btn-sm">← Kembali</a>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label for="member-select">Pilih Anggota</label>
+        <select id="member-select" class="input">
+          <option value="">-- Memuat daftar... --</option>
+        </select>
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary mode-btn active" data-mode="qr" id="btn-mode-qr" style="flex:1;">QR Code</button>
+        <button class="btn btn-secondary mode-btn" data-mode="card" id="btn-mode-card" style="flex:1;">Digital ID Card</button>
+      </div>
+    </div>
+
+    <div class="card" id="inactive-banner" style="display:none; text-align:center;">
+      <h3 style="color:var(--color-red); margin-bottom:4px;">ANGGOTA INI TIDAK AKTIF</h3>
+      <p class="text-muted" style="margin:0;">Silakan hubungi pengurus PAM.</p>
+    </div>
+
+    <div class="card" id="display-box" style="display:none; text-align:center;">
+      <canvas id="member-canvas" data-card-canvas style="width:100%; max-width:340px; height:auto; border-radius:12px;"></canvas>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api-public.js"></script>
+  <script src="js/card-engine.js"></script>
+  <script src="js/anggota-public.js"></script>
+  <script>
+    requirePin();
+    initMemberPage();
+  </script>
+</body>
+</html>

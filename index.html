@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anggota Aktif PAM</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img src="images/logo.png" alt="Logo PAM" class="logo">
+        <div class="app-name">Anggota Aktif PAM</div>
+        <div class="org-name">Verifikasi Keanggotaan</div>
+      </div>
+
+      <div id="alert-box" class="alert alert-error"></div>
+
+      <form id="pin-form">
+        <div class="form-group">
+          <label for="pin-input">Masukkan PIN Akses</label>
+          <input type="password" id="pin-input" class="input" inputmode="numeric" required autocomplete="off">
+        </div>
+        <button type="submit" class="btn btn-primary" id="pin-btn">Masuk</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api-public.js"></script>
+  <script>
+    document.getElementById("pin-form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var pin = document.getElementById("pin-input").value.trim();
+      var btn = document.getElementById("pin-btn");
+      var box = document.getElementById("alert-box");
+      box.classList.remove("show");
+
+      btn.disabled = true;
+      btn.textContent = "Memeriksa...";
+
+      var res = await callApiPublic("verifySitePin", { pin: pin });
+
+      btn.disabled = false;
+      btn.textContent = "Masuk";
+
+      if (res.status === "success") {
+        saveSitePin(pin);
+        window.location.href = "pilih.html";
+      } else {
+        box.textContent = res.message || "PIN salah.";
+        box.classList.add("show");
+      }
+    });
+  </script>
+</body>
+</html>
