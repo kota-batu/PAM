@@ -15,6 +15,13 @@
     .tree-team-item { margin-left: 36px; padding: 4px 0; cursor: pointer; color: var(--color-brand); }
     .tree-team-item:hover { text-decoration: underline; }
     #qr-reader { width: 100%; max-width: 360px; margin: 0 auto; }
+    #status-banner {
+      margin-bottom: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-family: var(--font-display);
+    }
   </style>
 </head>
 <body>
@@ -58,6 +65,7 @@
     </div>
 
     <div class="card" id="card-result-box" style="display:none; text-align:center;">
+      <div id="status-banner"></div>
       <canvas id="result-canvas" data-card-canvas style="width:100%; max-width:340px; height:auto; border-radius:12px;"></canvas>
     </div>
   </main>
