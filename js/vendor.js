@@ -70,6 +70,19 @@ async function showCardByRef(tipe, id) {
 function displayCard(engineType, data) {
   var box = document.getElementById("card-result-box");
   box.style.display = "block";
+
+  var isActive = data.tipe === "TETAP" ? data.statusKartu === "AKTIF" : data.statusTampil === "AKTIF";
+  var banner = document.getElementById("status-banner");
+  if (isActive) {
+    banner.style.background = "#e6f9ec";
+    banner.style.color = "#1a7f37";
+    banner.textContent = "🟢 ANGGOTA AKTIF";
+  } else {
+    banner.style.background = "#fdecea";
+    banner.style.color = "#c0392b";
+    banner.textContent = "🔴 ANGGOTA TIDAK AKTIF";
+  }
+
   var canvas = document.getElementById("result-canvas");
   updateCardDisplay(canvas, engineType, data);
   box.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -127,7 +140,7 @@ async function onScanSuccess(decodedText) {
   resultBox.innerHTML = '<div class="alert alert-success show">🟢 Valid — kartu ditampilkan di bawah</div>';
 
   var engineType = res.data.jenis === "Anggota Tetap" ? "TETAP" : "TIM";
-  displayCard(engineType, {
+  var cardData = {
     nama: res.data.nama,
     perusahaan: res.data.perusahaan,
     noKta: res.data.noKta,
@@ -138,8 +151,18 @@ async function onScanSuccess(decodedText) {
     tiktok: res.data.tiktok,
     linkLainnya: res.data.linkLainnya,
     whatsapp: res.data.whatsapp,
-    berlakuSampai: res.data.berlakuSampai
-  });
+    berlakuSampai: res.data.berlakuSampai,
+    tipe: engineType
+  };
+
+  // verifyQr sudah memvalidasi qrId (valid=true berarti kartu ini aktif)
+  if (engineType === "TETAP") {
+    cardData.statusKartu = "AKTIF";
+  } else {
+    cardData.statusTampil = "AKTIF";
+  }
+
+  displayCard(engineType, cardData);
 }
 
 function extractQrId(text) {
