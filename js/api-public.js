@@ -1,11 +1,12 @@
 /******************************************************************
  * FILE : api-public.js — situs "Anggota Aktif PAM"
- * Tidak ada lagi layar login — PIN dipakai otomatis dari config.js.
  * ================================================================ */
 
 async function callApiPublic(action, params) {
   params = params || {};
-  if (!params.pin) params.pin = SITE_PIN;
+
+  var pin = getSitePin();
+  if (pin && !params.pin) params.pin = pin;
 
   var body = Object.assign({ action: action }, params);
 
@@ -26,11 +27,32 @@ async function callApiPublic(action, params) {
   }
 }
 
+function saveSitePin(pin) {
+  sessionStorage.setItem(PIN_STORAGE_KEY, pin);
+}
+
+function getSitePin() {
+  return sessionStorage.getItem(PIN_STORAGE_KEY);
+}
+
+function clearSitePin() {
+  sessionStorage.removeItem(PIN_STORAGE_KEY);
+}
+
+function requirePin() {
+  var pin = getSitePin();
+  if (!pin) {
+    window.location.href = "index.html";
+    return null;
+  }
+  return pin;
+}
+
 function formatTanggalWaktuIndo(dateStr) {
   if (!dateStr) return "-";
   var d = new Date(dateStr);
   var bulanNama = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
   var jam = String(d.getHours()).padStart(2, "0");
   var menit = String(d.getMinutes()).padStart(2, "0");
-  return d.getDate() + " " + bulanNama[d.getMonth()] + " " + d.getFullYear() + ", " + jam + ":" + menit;
+  return d.getDate() + " " + bulanNama[d.getMonth()] + " " + jam + ":" + menit;
 }
