@@ -1,30 +1,26 @@
 /******************************************************************
  * FILE : vendor.js — logic khusus vendor.html
- * Versi optimasi (Sprint 2 — Smart Sync):
- * - Directory tampil INSTAN dari cache (localStorage).
- * - Lalu tanya server "versi data sekarang berapa?" (getSyncVersion —
- *   super ringan, cuma baca 1 baris). Kalau versi SAMA dengan cache,
- *   SELESAI, tidak ada fetch data tambahan sama sekali.
- * - Kalau versi BEDA (atau belum ada cache), baru fetch data lengkap
- *   (getMemberDirectory) dan simpan cache + versi barunya.
- * - Offline / fetch gagal -> tetap tampil cache lama, tidak error.
- * - Library QR scanner (html5-qrcode) baru di-load pas user klik tab
- *   Scan pertama kali, bukan langsung saat halaman dibuka.
+ * Sprint 4: integrasi IndexedDB (db.js) — setiap kartu yang berhasil
+ * dibuka SAAT ONLINE otomatis disimpan. Kalau nanti dibuka lagi
+ * SAAT OFFLINE, diambil dari penyimpanan lokal itu (dikasih label
+ * kecil supaya user tau ini data tersimpan, bukan real-time).
  * ================================================================ */
 
-const DIRECTORY_CACHE_KEY = "pam_directory_cache_v2"; // v2: sekarang nyimpen versi juga
+const DIRECTORY_CACHE_KEY = "pam_directory_cache_v2";
 
-var cardAssetsReady = null; // promise, dipakai supaya tidak blocking saat init
+var cardAssetsReady = null;
 
 async function initVendorPage() {
-  // preload asset kartu jalan di belakang, tidak menghambat tampilan awal
   cardAssetsReady = preloadCardAssets();
 
   setupTabs();
   document.getElementById("search-input").addEventListener("input", debounce(handleSearch, 400));
 
+  document.getElementById("btn-start-scan").addEventListener("click", startScanner);
+  document.getElementById("btn-stop-scan").addEventListener("click", stopScanner);
+
   updateSyncIndicator("loading");
-  loadDirectory(); // tampil dari cache dulu (jika ada), lalu cek versi ke server
+  loadDirectory();
 
   window.addEventListener("online", () => updateSyncIndicator("online"));
   window.addEventListener("offline", () => updateSyncIndicator("offline"));
@@ -39,7 +35,7 @@ function setupTabs() {
       document.getElementById("tab-" + btn.dataset.tab).style.display = "block";
 
       if (btn.dataset.tab === "scan") {
-        ensureScannerLibLoaded();
+        ensureScannerLibLoaded().catch(function () {});
       }
     });
   });
@@ -100,14 +96,36 @@ async function handleSearch() {
 
 /* ================ TAMPILKAN KARTU (dipakai search, directory, scan) ================ */
 
+/**
+ * Alur baru (Sprint 4):
+ * 1. Coba ambil data terbaru dari server (getPublicCard).
+ * 2. Kalau BERHASIL -> tampilkan + simpan ke IndexedDB (buat cadangan offline nanti).
+ * 3. Kalau GAGAL (offline / server error) -> coba ambil dari IndexedDB.
+ *    Kalau ADA -> tampilkan itu, dikasih label "data tersimpan".
+ *    Kalau TIDAK ADA sama sekali -> baru kasih alert error seperti biasa.
+ */
 async function showCardByRef(tipe, id) {
   var res = await callApiPublic("getPublicCard", { tipe: tipe, id: id });
-  if (res.status !== "success") { alert(res.message || "Gagal memuat kartu."); return; }
-  var engineType = res.data.tipe === "TETAP" ? "TETAP" : "TIM";
-  displayCard(engineType, res.data);
+
+  if (res.status === "success") {
+    var engineType = res.data.tipe === "TETAP" ? "TETAP" : "TIM";
+    dbSaveCard(tipe, id, res.data); // simpan di background, tidak perlu ditunggu
+    displayCard(engineType, res.data, false);
+    return;
+  }
+
+  // Gagal ambil data baru -> coba dari penyimpanan offline
+  var cached = await dbGetCard(tipe, id);
+  if (cached) {
+    var cachedEngineType = cached.data.tipe === "TETAP" ? "TETAP" : "TIM";
+    displayCard(cachedEngineType, cached.data, true, cached.savedAt);
+    return;
+  }
+
+  alert(res.message || "Gagal memuat kartu.");
 }
 
-async function displayCard(engineType, data) {
+async function displayCard(engineType, data, fromCache, savedAt) {
   var box = document.getElementById("card-result-box");
   box.style.display = "block";
 
@@ -123,7 +141,15 @@ async function displayCard(engineType, data) {
     banner.textContent = "🔴 ANGGOTA TIDAK AKTIF";
   }
 
-  // pastikan template & ikon kartu sudah siap sebelum digambar
+  var offlineNote = document.getElementById("offline-note");
+  if (fromCache) {
+    var waktu = savedAt ? new Date(savedAt).toLocaleString("id-ID") : "";
+    offlineNote.style.display = "block";
+    offlineNote.textContent = "📴 Data tersimpan (offline)" + (waktu ? " — terakhir sinkron " + waktu : "") + ". Sambungkan internet untuk data terbaru.";
+  } else {
+    offlineNote.style.display = "none";
+  }
+
   if (cardAssetsReady) await cardAssetsReady;
 
   var canvas = document.getElementById("result-canvas");
@@ -132,7 +158,7 @@ async function displayCard(engineType, data) {
 }
 
 
-/* ================ QR SCANNER (KAMERA) — lazy load library ================ */
+/* ================ QR SCANNER (KAMERA) ================ */
 
 var html5QrCode;
 var scannerLibPromise = null;
@@ -145,14 +171,10 @@ function ensureScannerLibLoaded() {
 
     var script = document.createElement("script");
     script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
-    script.onload = function () {
-      bindScannerButtons();
-      resolve();
-    };
+    script.onload = function () { resolve(); };
     script.onerror = function () {
-      document.getElementById("scan-result").innerHTML =
-        '<div class="alert alert-error show">Gagal memuat modul scanner. Cek koneksi internet.</div>';
-      reject();
+      scannerLibPromise = null;
+      reject(new Error("Gagal memuat modul scanner"));
     };
     document.head.appendChild(script);
   });
@@ -160,29 +182,37 @@ function ensureScannerLibLoaded() {
   return scannerLibPromise;
 }
 
-function bindScannerButtons() {
+async function startScanner() {
   var startBtn = document.getElementById("btn-start-scan");
   var stopBtn = document.getElementById("btn-stop-scan");
-  if (startBtn.__bound) return; // hindari double-binding
-  startBtn.__bound = true;
+  var resultBox = document.getElementById("scan-result");
 
-  startBtn.addEventListener("click", startScanner);
-  stopBtn.addEventListener("click", stopScanner);
-}
+  if (startBtn.disabled) return;
 
-function startScanner() {
-  document.getElementById("btn-start-scan").style.display = "none";
-  document.getElementById("btn-stop-scan").style.display = "inline-flex";
-  document.getElementById("scan-result").innerHTML = "";
+  startBtn.disabled = true;
+  resultBox.innerHTML = '<div class="empty-state">Menyiapkan pemindai...</div>';
+
+  try {
+    await ensureScannerLibLoaded();
+  } catch (e) {
+    resultBox.innerHTML = '<div class="alert alert-error show">Gagal memuat modul scanner. Cek koneksi internet, lalu coba lagi.</div>';
+    startBtn.disabled = false;
+    return;
+  }
+
+  resultBox.innerHTML = "";
+  startBtn.style.display = "none";
+  startBtn.disabled = false;
+  stopBtn.style.display = "inline-flex";
 
   html5QrCode = new Html5Qrcode("qr-reader");
   html5QrCode.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 250 },
     onScanSuccess,
-    function () {} // error normal terpanggil terus saat belum ketemu QR, sengaja diabaikan
+    function () {}
   ).catch(function (err) {
-    document.getElementById("scan-result").innerHTML = '<div class="alert alert-error show">Gagal membuka kamera: ' + err + '</div>';
+    resultBox.innerHTML = '<div class="alert alert-error show">Gagal membuka kamera: ' + err + '</div>';
     stopScanner();
   });
 }
@@ -232,14 +262,15 @@ async function onScanSuccess(decodedText) {
     tipe: engineType
   };
 
-  // verifyQr sudah memvalidasi qrId (valid=true berarti kartu ini aktif)
   if (engineType === "TETAP") {
     cardData.statusKartu = "AKTIF";
   } else {
     cardData.statusTampil = "AKTIF";
   }
 
-  displayCard(engineType, cardData);
+  // verifyQr hasil scan kamera juga disimpan offline (pakai qrId sebagai id)
+  dbSaveCard(engineType, qrId, cardData);
+  displayCard(engineType, cardData, false);
 }
 
 function extractQrId(text) {
@@ -252,20 +283,18 @@ function extractQrId(text) {
 }
 
 
-/* ================ DIRECTORY (POHON) — Smart Sync: cek versi dulu, fetch cuma kalau beda ================ */
+/* ================ DIRECTORY (POHON) — Smart Sync ================ */
 
 function loadDirectory() {
   var container = document.getElementById("directory-container");
-  var cache = readDirectoryCache(); // { version, data } atau null
+  var cache = readDirectoryCache();
 
-  // 1) tampilkan cache dulu kalau ada, INSTAN tanpa nunggu network
   if (cache) {
     renderDirectory(cache.data);
   } else {
     container.innerHTML = '<div class="empty-state">Memuat direktori...</div>';
   }
 
-  // 2) cek ke server: ada perubahan atau tidak (super ringan)
   checkVersionAndMaybeSync(cache);
 }
 
@@ -279,7 +308,6 @@ async function checkVersionAndMaybeSync(cache) {
     var verRes = await callApiPublic("getSyncVersion", {});
 
     if (verRes.status !== "success") {
-      // gagal cek versi -> anggap seperti offline, tetap pakai cache
       updateSyncIndicator(cache ? "offline" : "loading");
       if (!cache) {
         document.getElementById("directory-container").innerHTML =
@@ -290,13 +318,11 @@ async function checkVersionAndMaybeSync(cache) {
 
     var serverVersion = verRes.data.version;
 
-    // Versi sama persis dengan cache -> TIDAK ADA PERUBAHAN, tidak perlu fetch apapun lagi
     if (cache && cache.version === serverVersion) {
       updateSyncIndicator("online");
       return;
     }
 
-    // Versi beda (atau belum ada cache sama sekali) -> baru fetch data lengkap
     var dirRes = await callApiPublic("getMemberDirectory", {});
 
     if (dirRes.status !== "success") {
@@ -319,7 +345,6 @@ async function checkVersionAndMaybeSync(cache) {
     writeDirectoryCache(serverVersion, dirRes.data);
 
   } catch (e) {
-    // gagal konek (timeout dll) — biarkan tampilan cache lama tetap ada
     updateSyncIndicator(cache ? "offline" : "loading");
   }
 }
@@ -337,7 +362,7 @@ function writeDirectoryCache(version, data) {
   try {
     localStorage.setItem(DIRECTORY_CACHE_KEY, JSON.stringify({ version: version, data: data }));
   } catch (e) {
-    // storage penuh / diblokir browser — abaikan, tidak fatal
+    // storage penuh/diblokir -> abaikan
   }
 }
 
