@@ -1,14 +1,33 @@
 /******************************************************************
  * FILE : vendor.js — logic khusus vendor.html
+ * Versi optimasi (Sprint 2 — Smart Sync):
+ * - Directory tampil INSTAN dari cache (localStorage).
+ * - Lalu tanya server "versi data sekarang berapa?" (getSyncVersion —
+ *   super ringan, cuma baca 1 baris). Kalau versi SAMA dengan cache,
+ *   SELESAI, tidak ada fetch data tambahan sama sekali.
+ * - Kalau versi BEDA (atau belum ada cache), baru fetch data lengkap
+ *   (getMemberDirectory) dan simpan cache + versi barunya.
+ * - Offline / fetch gagal -> tetap tampil cache lama, tidak error.
+ * - Library QR scanner (html5-qrcode) baru di-load pas user klik tab
+ *   Scan pertama kali, bukan langsung saat halaman dibuka.
  * ================================================================ */
 
+const DIRECTORY_CACHE_KEY = "pam_directory_cache_v2"; // v2: sekarang nyimpen versi juga
+
+var cardAssetsReady = null; // promise, dipakai supaya tidak blocking saat init
+
 async function initVendorPage() {
-  await preloadCardAssets();
+  // preload asset kartu jalan di belakang, tidak menghambat tampilan awal
+  cardAssetsReady = preloadCardAssets();
+
   setupTabs();
   document.getElementById("search-input").addEventListener("input", debounce(handleSearch, 400));
-  document.getElementById("btn-start-scan").addEventListener("click", startScanner);
-  document.getElementById("btn-stop-scan").addEventListener("click", stopScanner);
-  loadDirectory();
+
+  updateSyncIndicator("loading");
+  loadDirectory(); // tampil dari cache dulu (jika ada), lalu cek versi ke server
+
+  window.addEventListener("online", () => updateSyncIndicator("online"));
+  window.addEventListener("offline", () => updateSyncIndicator("offline"));
 }
 
 function setupTabs() {
@@ -18,6 +37,10 @@ function setupTabs() {
       btn.classList.add("active");
       document.querySelectorAll(".tab-content").forEach(t => t.style.display = "none");
       document.getElementById("tab-" + btn.dataset.tab).style.display = "block";
+
+      if (btn.dataset.tab === "scan") {
+        ensureScannerLibLoaded();
+      }
     });
   });
 }
@@ -28,6 +51,23 @@ function debounce(fn, delay) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), delay);
   };
+}
+
+function updateSyncIndicator(state) {
+  var dot = document.getElementById("sync-dot");
+  var text = document.getElementById("sync-text");
+  if (!dot || !text) return;
+
+  dot.classList.remove("online", "offline");
+  if (state === "online") {
+    dot.classList.add("online");
+    text.textContent = "Data tersinkron";
+  } else if (state === "offline") {
+    dot.classList.add("offline");
+    text.textContent = "Offline — pakai data tersimpan";
+  } else {
+    text.textContent = "Memuat...";
+  }
 }
 
 
@@ -67,7 +107,7 @@ async function showCardByRef(tipe, id) {
   displayCard(engineType, res.data);
 }
 
-function displayCard(engineType, data) {
+async function displayCard(engineType, data) {
   var box = document.getElementById("card-result-box");
   box.style.display = "block";
 
@@ -83,15 +123,52 @@ function displayCard(engineType, data) {
     banner.textContent = "🔴 ANGGOTA TIDAK AKTIF";
   }
 
+  // pastikan template & ikon kartu sudah siap sebelum digambar
+  if (cardAssetsReady) await cardAssetsReady;
+
   var canvas = document.getElementById("result-canvas");
   updateCardDisplay(canvas, engineType, data);
   box.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 
-/* ================ QR SCANNER (KAMERA) ================ */
+/* ================ QR SCANNER (KAMERA) — lazy load library ================ */
 
 var html5QrCode;
+var scannerLibPromise = null;
+
+function ensureScannerLibLoaded() {
+  if (scannerLibPromise) return scannerLibPromise;
+
+  scannerLibPromise = new Promise(function (resolve, reject) {
+    if (window.Html5Qrcode) { resolve(); return; }
+
+    var script = document.createElement("script");
+    script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    script.onload = function () {
+      bindScannerButtons();
+      resolve();
+    };
+    script.onerror = function () {
+      document.getElementById("scan-result").innerHTML =
+        '<div class="alert alert-error show">Gagal memuat modul scanner. Cek koneksi internet.</div>';
+      reject();
+    };
+    document.head.appendChild(script);
+  });
+
+  return scannerLibPromise;
+}
+
+function bindScannerButtons() {
+  var startBtn = document.getElementById("btn-start-scan");
+  var stopBtn = document.getElementById("btn-stop-scan");
+  if (startBtn.__bound) return; // hindari double-binding
+  startBtn.__bound = true;
+
+  startBtn.addEventListener("click", startScanner);
+  stopBtn.addEventListener("click", stopScanner);
+}
 
 function startScanner() {
   document.getElementById("btn-start-scan").style.display = "none";
@@ -175,19 +252,100 @@ function extractQrId(text) {
 }
 
 
-/* ================ DIRECTORY (POHON) ================ */
+/* ================ DIRECTORY (POHON) — Smart Sync: cek versi dulu, fetch cuma kalau beda ================ */
 
-async function loadDirectory() {
+function loadDirectory() {
   var container = document.getElementById("directory-container");
-  var res = await callApiPublic("getMemberDirectory", {});
+  var cache = readDirectoryCache(); // { version, data } atau null
 
-  if (res.status !== "success" || res.data.length === 0) {
-    container.innerHTML = '<div class="empty-state">Belum ada data.</div>';
+  // 1) tampilkan cache dulu kalau ada, INSTAN tanpa nunggu network
+  if (cache) {
+    renderDirectory(cache.data);
+  } else {
+    container.innerHTML = '<div class="empty-state">Memuat direktori...</div>';
+  }
+
+  // 2) cek ke server: ada perubahan atau tidak (super ringan)
+  checkVersionAndMaybeSync(cache);
+}
+
+async function checkVersionAndMaybeSync(cache) {
+  if (navigator.onLine === false) {
+    updateSyncIndicator("offline");
     return;
   }
 
+  try {
+    var verRes = await callApiPublic("getSyncVersion", {});
+
+    if (verRes.status !== "success") {
+      // gagal cek versi -> anggap seperti offline, tetap pakai cache
+      updateSyncIndicator(cache ? "offline" : "loading");
+      if (!cache) {
+        document.getElementById("directory-container").innerHTML =
+          '<div class="empty-state">' + (verRes.message || "Gagal memuat data.") + '</div>';
+      }
+      return;
+    }
+
+    var serverVersion = verRes.data.version;
+
+    // Versi sama persis dengan cache -> TIDAK ADA PERUBAHAN, tidak perlu fetch apapun lagi
+    if (cache && cache.version === serverVersion) {
+      updateSyncIndicator("online");
+      return;
+    }
+
+    // Versi beda (atau belum ada cache sama sekali) -> baru fetch data lengkap
+    var dirRes = await callApiPublic("getMemberDirectory", {});
+
+    if (dirRes.status !== "success") {
+      updateSyncIndicator(cache ? "offline" : "loading");
+      if (!cache) {
+        document.getElementById("directory-container").innerHTML =
+          '<div class="empty-state">' + (dirRes.message || "Gagal memuat data.") + '</div>';
+      }
+      return;
+    }
+
+    updateSyncIndicator("online");
+
+    if (dirRes.data.length === 0) {
+      document.getElementById("directory-container").innerHTML = '<div class="empty-state">Belum ada data.</div>';
+    } else {
+      renderDirectory(dirRes.data);
+    }
+
+    writeDirectoryCache(serverVersion, dirRes.data);
+
+  } catch (e) {
+    // gagal konek (timeout dll) — biarkan tampilan cache lama tetap ada
+    updateSyncIndicator(cache ? "offline" : "loading");
+  }
+}
+
+function readDirectoryCache() {
+  try {
+    var raw = localStorage.getItem(DIRECTORY_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeDirectoryCache(version, data) {
+  try {
+    localStorage.setItem(DIRECTORY_CACHE_KEY, JSON.stringify({ version: version, data: data }));
+  } catch (e) {
+    // storage penuh / diblokir browser — abaikan, tidak fatal
+  }
+}
+
+function renderDirectory(data) {
+  var container = document.getElementById("directory-container");
+
   var html = "";
-  res.data.forEach(function (group) {
+  data.forEach(function (group) {
     html += '<details class="tree-instansi"><summary>📁 ' + group.instansi + '</summary>';
     group.anggotaTetap.forEach(function (leader) {
       var badge = leader.statusKartu === "AKTIF" ? "🟢" : "🔴";
