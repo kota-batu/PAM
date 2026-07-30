@@ -6,8 +6,8 @@
   <title>Pilih Halaman - Anggota Aktif PAM</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1B2430"> 
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="theme-color" content="#1B2430">
+  <link rel="apple-touch-icon" href="images/logo.png">
 </head>
 <body>
   <div class="auth-page">
@@ -21,18 +21,27 @@
 
       <a href="vendor.html" class="btn btn-primary" style="width:100%; margin-bottom:10px;">🏪 Saya Vendor</a>
       <a href="anggota.html" class="btn btn-secondary" style="width:100%;">🪪 Saya Anggota</a>
+
+      <div id="sync-status" class="text-muted" style="font-size:12px; text-align:center; margin-top:16px;"></div>
     </div>
   </div>
-   <script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js")
-      .catch(function (err) { console.warn("Service worker gagal register:", err); });
-  }
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js")
+        .catch(function (err) { console.warn("Service worker gagal register:", err); });
+    }
   </script>
   <script src="js/config.js"></script>
+  <script src="js/db.js"></script>
   <script src="js/api-public.js"></script>
+  <script src="js/sync.js"></script>
   <script>
-    requirePin();
+    (async function () {
+      updateSyncBanner();
+      await initOfflineData();
+      updateSyncBanner();
+    })();
   </script>
 </body>
 </html>
