@@ -23,6 +23,10 @@
       font-family: var(--font-display);
     }
   </style>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1B2430">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
 </head>
 <body>
   <main class="main-content" style="margin-left:0; max-width:800px;">
@@ -69,7 +73,12 @@
       <canvas id="result-canvas" data-card-canvas style="width:100%; max-width:340px; height:auto; border-radius:12px;"></canvas>
     </div>
   </main>
-
+   <script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js")
+      .catch(function (err) { console.warn("Service worker gagal register:", err); });
+  }
+</script>
   <script src="js/config.js"></script>
   <script src="js/api-public.js"></script>
   <script src="js/card-engine.js"></script>
