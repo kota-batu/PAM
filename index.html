@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Anggota Aktif PAM</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1B2430">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
 <body>
   <div class="auth-page">
@@ -26,7 +29,12 @@
       </form>
     </div>
   </div>
-
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js")
+      .catch(function (err) { console.warn("Service worker gagal register:", err); });
+  }
+</script>
   <script src="js/config.js"></script>
   <script src="js/api-public.js"></script>
   <script>
