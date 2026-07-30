@@ -25,7 +25,8 @@
   </style>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#1B2430">
-  <link rel="apple-touch-icon" href="images/logo.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
 </head>
 <body>
   <main class="main-content" style="margin-left:0; max-width:800px;">
@@ -36,8 +37,6 @@
       </div>
       <a href="pilih.html" class="btn btn-secondary btn-sm">← Kembali</a>
     </div>
-
-    <div id="sync-status" class="text-muted" style="font-size:12px; text-align:center; margin-bottom:14px;"></div>
 
     <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
       <button class="btn btn-secondary tab-btn active" data-tab="search">🔍 Search</button>
@@ -74,20 +73,18 @@
       <canvas id="result-canvas" data-card-canvas style="width:100%; max-width:340px; height:auto; border-radius:12px;"></canvas>
     </div>
   </main>
-
-  <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("service-worker.js")
-        .catch(function (err) { console.warn("Service worker gagal register:", err); });
-    }
-  </script>
+   <script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js")
+      .catch(function (err) { console.warn("Service worker gagal register:", err); });
+  }
+</script>
   <script src="js/config.js"></script>
-  <script src="js/db.js"></script>
   <script src="js/api-public.js"></script>
-  <script src="js/sync.js"></script>
   <script src="js/card-engine.js"></script>
   <script src="js/vendor.js"></script>
   <script>
+    requirePin();
     initVendorPage();
   </script>
 </body>
