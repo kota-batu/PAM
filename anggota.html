@@ -5,10 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Anggota - Anggota Aktif PAM</title>
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#1B2430">
-  <link rel="apple-touch-icon" href="images/logo.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    #offline-note {
+      display: none;
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #fff3cd;
+      color: #7a5b00;
+      font-size: 12.5px;
+      text-align: left;
+    }
+  </style>
 </head>
 <body>
   <main class="main-content" style="margin-left:0; max-width:500px;">
@@ -19,8 +31,6 @@
       </div>
       <a href="pilih.html" class="btn btn-secondary btn-sm">← Kembali</a>
     </div>
-
-    <div id="sync-status" class="text-muted" style="font-size:12px; text-align:center; margin-bottom:14px;"></div>
 
     <div class="card">
       <div class="form-group">
@@ -42,24 +52,24 @@
     </div>
 
     <div class="card" id="display-box" style="display:none; text-align:center;">
+      <div id="offline-note"></div>
       <canvas id="member-canvas" data-card-canvas style="width:100%; max-width:340px; height:auto; border-radius:12px;"></canvas>
     </div>
   </main>
 
+  <script src="js/config.js"></script>
+  <script src="js/api-public.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/card-engine.js"></script>
+  <script src="js/anggota-public.js"></script>
   <script>
+    requirePin();
+    initMemberPage();
+
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js")
         .catch(function (err) { console.warn("Service worker gagal register:", err); });
     }
-  </script>
-  <script src="js/config.js"></script>
-  <script src="js/db.js"></script>
-  <script src="js/api-public.js"></script>
-  <script src="js/sync.js"></script>
-  <script src="js/card-engine.js"></script>
-  <script src="js/anggota-public.js"></script>
-  <script>
-    initMemberPage();
   </script>
 </body>
 </html>
