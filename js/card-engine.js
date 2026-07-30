@@ -1,10 +1,7 @@
 /******************************************************************
  * FILE : card-engine.js — situs "Anggota Aktif PAM"
- * Versi ringan: HANYA foto + nama + no KTA/HP + instansi yang
- * digambar di atas template. Tidak ada ikon sosial media apapun —
- * template idcardtetap.png & idcardteam.png sudah punya logo
- * menempel jadi satu di gambarnya. Template & foto di-cache supaya
- * ganti-ganti anggota tidak perlu load ulang gambar (render cepat).
+ * Versi optimasi: template PNG & ikon di-load SEKALI (preloadCardAssets),
+ * setiap ganti anggota cuma redraw pakai data baru, bukan load ulang gambar.
  * ================================================================ */
 
 const CARD_CONFIG = {
@@ -14,7 +11,8 @@ const CARD_CONFIG = {
     foto: { x: 504, y: 902, w: 320, h: 432 },
     nama: { x: 609, y: 1225 },
     noKta: { x: 609, y: 1291 },
-    perusahaan: { x: 609, y: 1375 }
+    perusahaan: { x: 609, y: 1375 },
+    iconsCenter: { x: 477, y: 1494 }
   },
   TIM: {
     template: "images/idcardteam.png",
@@ -28,6 +26,7 @@ const CARD_CONFIG = {
 };
 
 var templateCache = {};
+var iconCache = {};
 
 function loadImageAsync(src) {
   return new Promise((resolve, reject) => {
@@ -89,16 +88,41 @@ function buildVerifikasiUrl(qrId) {
 
 /**
  * WAJIB dipanggil 1x saat halaman dibuka, SEBELUM menampilkan kartu apapun.
- * Setelah ini, ganti-ganti anggota tidak akan reload gambar template lagi.
+ * Setelah ini, ganti-ganti anggota tidak akan reload gambar template/ikon lagi.
  */
 async function preloadCardAssets() {
   templateCache.TETAP = await loadImageAsync(CARD_CONFIG.TETAP.template);
   templateCache.TIM = await loadImageAsync(CARD_CONFIG.TIM.template);
+
+  var iconFiles = {
+    whatsapp: "icons/whatsapp.png",
+    instagram: "icons/instagram.png",
+    tiktok: "icons/tiktok.png",
+    link: "icons/link.png"
+  };
+
+  for (var key in iconFiles) {
+    try {
+      iconCache[key] = await loadImageAsync(iconFiles[key]);
+    } catch (e) {
+      iconCache[key] = null;
+    }
+  }
+}
+
+function buildSocialIconList(data) {
+  var mapping = [
+    { key: "whatsapp", url: data.whatsapp ? "https://wa.me/" + data.whatsapp : "" },
+    { key: "instagram", url: data.instagram || "" },
+    { key: "tiktok", url: data.tiktok || "" },
+    { key: "link", url: data.linkLainnya || "" }
+  ];
+  return mapping.filter(m => m.url).map(m => ({ img: iconCache[m.key], url: m.url }));
 }
 
 /**
  * Update tampilan kartu di canvas. HANYA foto anggota yang di-load ulang
- * (memang beda tiap orang) — template pakai yang sudah di-cache.
+ * (memang beda tiap orang) — template & ikon pakai yang sudah di-cache.
  * engineType: "TETAP" atau "TIM"
  */
 async function updateCardDisplay(canvasEl, engineType, data) {
@@ -124,6 +148,17 @@ async function updateCardDisplay(canvasEl, engineType, data) {
     if (engineType === "TETAP") {
       drawCenteredText(ctx, data.noKta, cfg.noKta.x, cfg.noKta.y, 63);
       drawCenteredText(ctx, data.perusahaan, cfg.perusahaan.x, cfg.perusahaan.y, 63);
+
+      var icons = buildSocialIconList(data);
+      var iconSize = 70, gap = 24;
+      var totalW = icons.length * iconSize + (icons.length - 1) * gap;
+      var startX = cfg.iconsCenter.x - totalW / 2;
+
+      icons.forEach(function (item, idx) {
+        var ix = startX + idx * (iconSize + gap);
+        var iy = cfg.iconsCenter.y - iconSize / 2;
+        if (item.img) ctx.drawImage(item.img, ix, iy, iconSize, iconSize);
+      });
     } else {
       drawCenteredText(ctx, data.noHp || "-", cfg.noHp.x, cfg.noHp.y, 63);
       drawCenteredText(ctx, data.perusahaan || "-", cfg.perusahaan.x, cfg.perusahaan.y, 63);
