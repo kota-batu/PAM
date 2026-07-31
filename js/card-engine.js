@@ -1,7 +1,11 @@
 /******************************************************************
  * FILE : card-engine.js — situs "Anggota Aktif PAM"
- * Versi optimasi: template PNG & ikon di-load SEKALI (preloadCardAssets),
- * setiap ganti anggota cuma redraw pakai data baru, bukan load ulang gambar.
+ * ================================================================
+ * v3: SEMUA ICON (WhatsApp/Instagram/TikTok/Link) DIHAPUS TOTAL.
+ * Kartu sekarang cuma render: template + foto + nama + info teks
+ * (No KTA/No HP + perusahaan/instansi). Ini bikin preload cuma
+ * perlu 2 gambar (2 template), bukan 6 -> lebih cepat & lebih
+ * jarang gagal karena jaringan.
  * ================================================================ */
 
 const CARD_CONFIG = {
@@ -11,8 +15,7 @@ const CARD_CONFIG = {
     foto: { x: 504, y: 902, w: 320, h: 432 },
     nama: { x: 609, y: 1225 },
     noKta: { x: 609, y: 1291 },
-    perusahaan: { x: 609, y: 1375 },
-    iconsCenter: { x: 477, y: 1494 }
+    perusahaan: { x: 609, y: 1375 }
   },
   TIM: {
     template: "images/idcardteam.png",
@@ -26,21 +29,40 @@ const CARD_CONFIG = {
 };
 
 var templateCache = {};
-var iconCache = {};
 
-function loadImageAsync(src) {
+const IMAGE_LOAD_TIMEOUT_MS = 8000;
+
+function loadImageAsync(src, timeoutMs) {
   return new Promise((resolve, reject) => {
+    var settled = false;
     var img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
+
+    var timer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      reject(new Error("Timeout memuat gambar (" + (timeoutMs || IMAGE_LOAD_TIMEOUT_MS) + "ms): " + src));
+    }, timeoutMs || IMAGE_LOAD_TIMEOUT_MS);
+
+    img.onload = function () {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(img);
+    };
+    img.onerror = function () {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error("Gagal memuat gambar: " + src));
+    };
     img.src = src;
   });
 }
 
 function loadImageFromBase64(base64, mime) {
   if (!base64) return Promise.resolve(null);
-  return loadImageAsync("data:" + (mime || "image/jpeg") + ";base64," + base64);
+  return loadImageAsync("data:" + (mime || "image/jpeg") + ";base64," + base64, 15000);
 }
 
 function generateQrImage(text, sizePx) {
@@ -87,53 +109,55 @@ function buildVerifikasiUrl(qrId) {
 }
 
 /**
- * WAJIB dipanggil 1x saat halaman dibuka, SEBELUM menampilkan kartu apapun.
- * Setelah ini, ganti-ganti anggota tidak akan reload gambar template/ikon lagi.
+ * WAJIB dipanggil 1x saat halaman dibuka. Sekarang cuma load 2 gambar
+ * (template TETAP & TIM) secara paralel dengan timeout 8 detik.
  */
 async function preloadCardAssets() {
-  templateCache.TETAP = await loadImageAsync(CARD_CONFIG.TETAP.template);
-  templateCache.TIM = await loadImageAsync(CARD_CONFIG.TIM.template);
+  var results = await Promise.allSettled([
+    loadImageAsync(CARD_CONFIG.TETAP.template),
+    loadImageAsync(CARD_CONFIG.TIM.template)
+  ]);
 
-  var iconFiles = {
-    whatsapp: "icons/whatsapp.png",
-    instagram: "icons/instagram.png",
-    tiktok: "icons/tiktok.png",
-    link: "icons/link.png"
-  };
+  templateCache.TETAP = results[0].status === "fulfilled" ? results[0].value : null;
+  templateCache.TIM = results[1].status === "fulfilled" ? results[1].value : null;
 
-  for (var key in iconFiles) {
-    try {
-      iconCache[key] = await loadImageAsync(iconFiles[key]);
-    } catch (e) {
-      iconCache[key] = null;
-    }
-  }
+  if (results[0].status === "rejected") console.warn("Gagal load template TETAP:", results[0].reason);
+  if (results[1].status === "rejected") console.warn("Gagal load template TIM:", results[1].reason);
 }
 
-function buildSocialIconList(data) {
-  var mapping = [
-    { key: "whatsapp", url: data.whatsapp ? "https://wa.me/" + data.whatsapp : "" },
-    { key: "instagram", url: data.instagram || "" },
-    { key: "tiktok", url: data.tiktok || "" },
-    { key: "link", url: data.linkLainnya || "" }
-  ];
-  return mapping.filter(m => m.url).map(m => ({ img: iconCache[m.key], url: m.url }));
+function drawTemplateMissingMessage(canvasEl, cfg) {
+  canvasEl.width = cfg.width;
+  canvasEl.height = cfg.height;
+  var ctx = canvasEl.getContext("2d");
+  ctx.fillStyle = "#f2f2f2";
+  ctx.fillRect(0, 0, cfg.width, cfg.height);
+  ctx.fillStyle = "#c0392b";
+  ctx.textAlign = "center";
+  ctx.font = "bold 44px Arial";
+  ctx.fillText("Gagal memuat template kartu", cfg.width / 2, cfg.height / 2 - 30);
+  ctx.fillStyle = "#555";
+  ctx.font = "30px Arial";
+  ctx.fillText("Sambungkan internet, lalu buka lagi", cfg.width / 2, cfg.height / 2 + 30);
 }
 
 /**
- * Update tampilan kartu di canvas. HANYA foto anggota yang di-load ulang
- * (memang beda tiap orang) — template & ikon pakai yang sudah di-cache.
- * engineType: "TETAP" atau "TIM"
+ * Render kartu: template + foto + nama + info teks. TIDAK ADA ICON.
  */
 async function updateCardDisplay(canvasEl, engineType, data) {
   var cfg = CARD_CONFIG[engineType];
   var template = templateCache[engineType];
 
+  if (!template) {
+    drawTemplateMissingMessage(canvasEl, cfg);
+    canvasEl.__redraw = null;
+    return;
+  }
+
   canvasEl.width = cfg.width;
   canvasEl.height = cfg.height;
   var ctx = canvasEl.getContext("2d");
 
-  var foto = await loadImageFromBase64(data.fotoBase64, data.fotoMime);
+  var foto = await loadImageFromBase64(data.fotoBase64, data.fotoMime).catch(function () { return null; });
 
   function draw() {
     ctx.clearRect(0, 0, cfg.width, cfg.height);
@@ -148,17 +172,6 @@ async function updateCardDisplay(canvasEl, engineType, data) {
     if (engineType === "TETAP") {
       drawCenteredText(ctx, data.noKta, cfg.noKta.x, cfg.noKta.y, 63);
       drawCenteredText(ctx, data.perusahaan, cfg.perusahaan.x, cfg.perusahaan.y, 63);
-
-      var icons = buildSocialIconList(data);
-      var iconSize = 70, gap = 24;
-      var totalW = icons.length * iconSize + (icons.length - 1) * gap;
-      var startX = cfg.iconsCenter.x - totalW / 2;
-
-      icons.forEach(function (item, idx) {
-        var ix = startX + idx * (iconSize + gap);
-        var iy = cfg.iconsCenter.y - iconSize / 2;
-        if (item.img) ctx.drawImage(item.img, ix, iy, iconSize, iconSize);
-      });
     } else {
       drawCenteredText(ctx, data.noHp || "-", cfg.noHp.x, cfg.noHp.y, 63);
       drawCenteredText(ctx, data.perusahaan || "-", cfg.perusahaan.x, cfg.perusahaan.y, 63);
@@ -170,7 +183,7 @@ async function updateCardDisplay(canvasEl, engineType, data) {
   }
 
   draw();
-  canvasEl.__redraw = draw; // dipakai loop di bawah supaya watermark tetap bergerak
+  canvasEl.__redraw = draw;
 }
 
 async function renderQrOnly(canvasEl, qrUrl, label) {
@@ -192,10 +205,9 @@ async function renderQrOnly(canvasEl, qrUrl, label) {
     ctx.fillText(label, size / 2, size + 40);
   }
 
-  canvasEl.__redraw = null; // QR statis, tidak perlu redraw berkala
+  canvasEl.__redraw = null;
 }
 
-// Loop global: bikin watermark di kartu yang lagi tampil tetap "bergerak" & jam update
 setInterval(function () {
   document.querySelectorAll("canvas[data-card-canvas]").forEach(function (c) {
     if (c.__redraw) c.__redraw();
