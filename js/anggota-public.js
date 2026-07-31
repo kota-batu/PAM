@@ -1,7 +1,8 @@
 /******************************************************************
- * FILE : anggota-public.js — logic khusus anggota.html (situs baru)
- * Sprint 4: integrasi IndexedDB — kartu yang pernah dibuka saat
- * online otomatis tersimpan, bisa dibuka lagi walau offline.
+ * FILE : anggota-public.js — logic khusus anggota.html
+ * Sama arsitekturnya dengan vendor.js: sync sekali di awal (semua
+ * data+foto ke IndexedDB), abis itu pilih nama baca dari IndexedDB,
+ * tidak ada fetch lagi.
  * ================================================================ */
 
 var currentMode = "qr";
@@ -10,8 +11,9 @@ var currentSelection = null;
 const MEMBER_NAMES_CACHE_KEY = "pam_member_names_cache_v1";
 
 async function initMemberPage() {
-  await preloadCardAssets();
-  await loadNameOptions();
+  cardAssetsReadyPromise = preloadCardAssets();
+
+  await loadNameOptions(); // tampil dari cache localStorage (ringan, instan)
 
   document.getElementById("member-select").addEventListener("change", handleSelectChange);
 
@@ -27,7 +29,11 @@ async function initMemberPage() {
       renderCurrentSelection();
     });
   });
+
+  await performSync(function () {}); // download semua kartu+foto ke IndexedDB di background
 }
+
+var cardAssetsReadyPromise = null;
 
 async function loadNameOptions() {
   var select = document.getElementById("member-select");
@@ -39,7 +45,7 @@ async function loadNameOptions() {
     select.innerHTML = '<option value="">-- Memuat daftar... --</option>';
   }
 
-  await checkNameVersionAndMaybeSync(cache, select);
+  checkNameVersionAndMaybeSync(cache, select); // tidak perlu ditunggu, biar UI gak nge-block
 }
 
 async function checkNameVersionAndMaybeSync(cache, select) {
@@ -63,7 +69,7 @@ async function checkNameVersionAndMaybeSync(cache, select) {
     writeNameCache(serverVersion, res.data);
 
   } catch (e) {
-    // gagal konek -> biarkan cache yang sudah tampil tetap ada
+    // gagal konek -> biarkan cache lama tetap tampil
   }
 }
 
@@ -109,56 +115,52 @@ function handleSelectChange(e) {
   renderCurrentSelection();
 }
 
+function computeIsActiveLocal(tipe, data) {
+  if (tipe === "TETAP") {
+    return data.statusKartu === "AKTIF";
+  }
+  if (!data.berlakuSampai) return false;
+  return new Date() <= new Date(data.berlakuSampai);
+}
+
 /**
- * Alur baru (Sprint 4): coba online dulu, kalau gagal coba IndexedDB.
+ * 100% dari IndexedDB — tidak ada fetch ke server saat memilih nama.
  */
 async function renderCurrentSelection() {
   if (!currentSelection) return;
 
   var tipe = currentSelection.tipe;
   var id = currentSelection.id;
-  var d, fromCache = false, savedAt = null;
 
-  var res = await callApiPublic("getPublicCard", { tipe: tipe, id: id });
+  var record = await dbGetCard(tipe, id);
 
-  if (res.status === "success") {
-    d = res.data;
-    dbSaveCard(tipe, id, d); // simpan di background buat cadangan offline
-  } else {
-    var cached = await dbGetCard(tipe, id);
-    if (cached) {
-      d = cached.data;
-      fromCache = true;
-      savedAt = cached.savedAt;
-    } else {
-      alert(res.message || "Gagal memuat data.");
-      return;
-    }
+  if (!record) {
+    alert("Data belum tersinkron. Sambungkan internet, lalu buka ulang halaman ini.");
+    return;
   }
 
-  var isActive = d.tipe === "TETAP" ? d.statusKartu === "AKTIF" : d.statusTampil === "AKTIF";
+  var d = record.data;
+  var isActive = computeIsActiveLocal(record.tipe, d);
 
   document.getElementById("inactive-banner").style.display = isActive ? "none" : "block";
   document.getElementById("display-box").style.display = "block";
 
   var offlineNote = document.getElementById("offline-note");
   if (offlineNote) {
-    if (fromCache) {
-      var waktu = savedAt ? new Date(savedAt).toLocaleString("id-ID") : "";
-      offlineNote.style.display = "block";
-      offlineNote.textContent = "📴 Data tersimpan (offline)" + (waktu ? " — terakhir sinkron " + waktu : "") + ".";
-    } else {
-      offlineNote.style.display = "none";
-    }
+    var waktu = record.savedAt ? new Date(record.savedAt).toLocaleString("id-ID") : "";
+    offlineNote.style.display = "block";
+    offlineNote.textContent = waktu ? "Data tersimpan — terakhir sinkron " + waktu : "";
   }
 
   var canvas = document.getElementById("member-canvas");
+
+  if (cardAssetsReadyPromise) await cardAssetsReadyPromise;
 
   if (currentMode === "qr") {
     var verifUrl = buildVerifikasiUrl(d.qrId);
     await renderQrOnly(canvas, verifUrl, d.nama);
   } else {
-    var engineType = d.tipe === "TETAP" ? "TETAP" : "TIM";
+    var engineType = record.tipe === "TETAP" ? "TETAP" : "TIM";
     await updateCardDisplay(canvas, engineType, d);
   }
 }
