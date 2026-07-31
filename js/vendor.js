@@ -1,9 +1,15 @@
 /******************************************************************
  * FILE : vendor.js — logic khusus vendor.html
- * Sprint 4: integrasi IndexedDB (db.js) — setiap kartu yang berhasil
- * dibuka SAAT ONLINE otomatis disimpan. Kalau nanti dibuka lagi
- * SAAT OFFLINE, diambil dari penyimpanan lokal itu (dikasih label
- * kecil supaya user tau ini data tersimpan, bukan real-time).
+ * ================================================================
+ * ARSITEKTUR BARU:
+ * 1. Begitu halaman dibuka, performSync() jalan (dari db.js):
+ *    - Cek versi server (ringan). Kalau sama dengan lokal -> skip.
+ *    - Kalau beda / pertama kali -> download SEMUA data+foto sekaligus
+ *      (getAllCardsBulk), simpan ke IndexedDB.
+ *    - Offline -> langsung skip, pakai data yang sudah ada.
+ * 2. SETELAH sync, Search, Directory (klik nama), dan QR Scan SEMUA
+ *    baca dari IndexedDB — TIDAK ADA fetch ke server lagi sama sekali
+ *    saat user berinteraksi. Beneran offline, bukan cuma fallback.
  * ================================================================ */
 
 const DIRECTORY_CACHE_KEY = "pam_directory_cache_v2";
@@ -19,10 +25,12 @@ async function initVendorPage() {
   document.getElementById("btn-start-scan").addEventListener("click", startScanner);
   document.getElementById("btn-stop-scan").addEventListener("click", stopScanner);
 
-  updateSyncIndicator("loading");
-  loadDirectory();
+  updateSyncIndicator("checking");
+  loadDirectory(); // tetap pakai localStorage untuk STRUKTUR pohon (ringan)
 
-  window.addEventListener("online", () => updateSyncIndicator("online"));
+  await performSync(updateSyncIndicator); // download semua kartu+foto ke IndexedDB
+
+  window.addEventListener("online", () => updateSyncIndicator("online-idle"));
   window.addEventListener("offline", () => updateSyncIndicator("offline"));
 }
 
@@ -55,38 +63,70 @@ function updateSyncIndicator(state) {
   if (!dot || !text) return;
 
   dot.classList.remove("online", "offline");
-  if (state === "online") {
-    dot.classList.add("online");
-    text.textContent = "Data tersinkron";
-  } else if (state === "offline") {
-    dot.classList.add("offline");
-    text.textContent = "Offline — pakai data tersimpan";
-  } else {
-    text.textContent = "Memuat...";
+
+  switch (state) {
+    case "checking":
+      text.textContent = "Memeriksa data...";
+      break;
+    case "syncing":
+      text.textContent = "Menyinkronkan data & foto...";
+      break;
+    case "done":
+      dot.classList.add("online");
+      text.textContent = "Data tersinkron";
+      break;
+    case "up-to-date":
+    case "online-idle":
+      dot.classList.add("online");
+      text.textContent = "Data tersinkron";
+      break;
+    case "offline":
+      dot.classList.add("offline");
+      text.textContent = "Offline — pakai data tersimpan";
+      break;
+    case "error":
+      dot.classList.add("offline");
+      text.textContent = "Gagal sinkron — pakai data tersimpan";
+      break;
   }
 }
 
+/**
+ * Hitung status aktif TANPA bergantung ke cache yang mungkin basi.
+ * Untuk TIDAK_TETAP, dihitung ulang dari jam HP sendiri vs berlakuSampai
+ * (supaya tetap akurat meskipun belum sempat sync ulang).
+ */
+function computeIsActive(tipe, data) {
+  if (tipe === "TETAP") {
+    return data.statusKartu === "AKTIF";
+  }
+  if (!data.berlakuSampai) return false;
+  return new Date() <= new Date(data.berlakuSampai);
+}
 
-/* ================ SEARCH ================ */
+
+/* ================ SEARCH — baca dari IndexedDB, bukan API ================ */
 
 async function handleSearch() {
-  var q = document.getElementById("search-input").value.trim();
+  var q = document.getElementById("search-input").value.trim().toLowerCase();
   var box = document.getElementById("search-results");
   if (!q) { box.innerHTML = ""; return; }
 
-  box.innerHTML = '<div class="empty-state">Mencari...</div>';
-  var res = await callApiPublic("searchMembers", { query: q });
+  var allCards = await dbGetAllCards();
+  var matches = allCards.filter(function (c) {
+    return c.data && c.data.nama && c.data.nama.toLowerCase().indexOf(q) !== -1;
+  });
 
-  if (res.status !== "success" || res.data.length === 0) {
-    box.innerHTML = '<div class="empty-state">Tidak ditemukan.</div>';
+  if (matches.length === 0) {
+    box.innerHTML = '<div class="empty-state">Tidak ditemukan (atau belum tersinkron — sambungkan internet dulu).</div>';
     return;
   }
 
   var html = '<div class="card"><div class="table-wrap"><table class="data-table"><tbody>';
-  res.data.forEach(function (m) {
-    var sub = m.tipe === "TETAP" ? (m.perusahaan || "-") : ("Team dari " + (m.dibuatOleh || "-"));
-    html += '<tr style="cursor:pointer;" onclick="showCardByRef(\'' + m.tipe + '\',\'' + m.id + '\')">';
-    html += '<td><strong>' + m.nama + '</strong><br><span class="text-muted" style="font-size:12px;">' + sub + '</span></td>';
+  matches.forEach(function (c) {
+    var sub = c.data.perusahaan || "-";
+    html += '<tr style="cursor:pointer;" onclick="showCardByRef(\'' + c.tipe + '\',\'' + c.id + '\')">';
+    html += '<td><strong>' + c.data.nama + '</strong><br><span class="text-muted" style="font-size:12px;">' + sub + '</span></td>';
     html += '</tr>';
   });
   html += '</tbody></table></div></div>';
@@ -94,42 +134,25 @@ async function handleSearch() {
 }
 
 
-/* ================ TAMPILKAN KARTU (dipakai search, directory, scan) ================ */
+/* ================ TAMPILKAN KARTU — 100% dari IndexedDB ================ */
 
-/**
- * Alur baru (Sprint 4):
- * 1. Coba ambil data terbaru dari server (getPublicCard).
- * 2. Kalau BERHASIL -> tampilkan + simpan ke IndexedDB (buat cadangan offline nanti).
- * 3. Kalau GAGAL (offline / server error) -> coba ambil dari IndexedDB.
- *    Kalau ADA -> tampilkan itu, dikasih label "data tersimpan".
- *    Kalau TIDAK ADA sama sekali -> baru kasih alert error seperti biasa.
- */
 async function showCardByRef(tipe, id) {
-  var res = await callApiPublic("getPublicCard", { tipe: tipe, id: id });
+  var record = await dbGetCard(tipe, id);
 
-  if (res.status === "success") {
-    var engineType = res.data.tipe === "TETAP" ? "TETAP" : "TIM";
-    dbSaveCard(tipe, id, res.data); // simpan di background, tidak perlu ditunggu
-    displayCard(engineType, res.data, false);
+  if (!record) {
+    alert("Data belum tersinkron. Sambungkan internet, lalu buka ulang halaman ini supaya data ter-download.");
     return;
   }
 
-  // Gagal ambil data baru -> coba dari penyimpanan offline
-  var cached = await dbGetCard(tipe, id);
-  if (cached) {
-    var cachedEngineType = cached.data.tipe === "TETAP" ? "TETAP" : "TIM";
-    displayCard(cachedEngineType, cached.data, true, cached.savedAt);
-    return;
-  }
-
-  alert(res.message || "Gagal memuat kartu.");
+  var engineType = record.tipe === "TETAP" ? "TETAP" : "TIM";
+  displayCard(record.tipe, engineType, record.data, record.savedAt);
 }
 
-async function displayCard(engineType, data, fromCache, savedAt) {
+async function displayCard(tipe, engineType, data, savedAt) {
   var box = document.getElementById("card-result-box");
   box.style.display = "block";
 
-  var isActive = data.tipe === "TETAP" ? data.statusKartu === "AKTIF" : data.statusTampil === "AKTIF";
+  var isActive = computeIsActive(tipe, data);
   var banner = document.getElementById("status-banner");
   if (isActive) {
     banner.style.background = "#e6f9ec";
@@ -142,12 +165,10 @@ async function displayCard(engineType, data, fromCache, savedAt) {
   }
 
   var offlineNote = document.getElementById("offline-note");
-  if (fromCache) {
+  if (offlineNote) {
     var waktu = savedAt ? new Date(savedAt).toLocaleString("id-ID") : "";
     offlineNote.style.display = "block";
-    offlineNote.textContent = "📴 Data tersimpan (offline)" + (waktu ? " — terakhir sinkron " + waktu : "") + ". Sambungkan internet untuk data terbaru.";
-  } else {
-    offlineNote.style.display = "none";
+    offlineNote.textContent = waktu ? "Data tersimpan — terakhir sinkron " + waktu : "";
   }
 
   if (cardAssetsReady) await cardAssetsReady;
@@ -158,7 +179,7 @@ async function displayCard(engineType, data, fromCache, savedAt) {
 }
 
 
-/* ================ QR SCANNER (KAMERA) ================ */
+/* ================ QR SCANNER — verifikasi dari IndexedDB, TANPA internet ================ */
 
 var html5QrCode;
 var scannerLibPromise = null;
@@ -195,7 +216,7 @@ async function startScanner() {
   try {
     await ensureScannerLibLoaded();
   } catch (e) {
-    resultBox.innerHTML = '<div class="alert alert-error show">Gagal memuat modul scanner. Cek koneksi internet, lalu coba lagi.</div>';
+    resultBox.innerHTML = '<div class="alert alert-error show">Gagal memuat modul scanner (perlu internet sekali saja buat modul ini). Coba lagi.</div>';
     startBtn.disabled = false;
     return;
   }
@@ -225,6 +246,10 @@ function stopScanner() {
   }
 }
 
+/**
+ * Verifikasi QR SEPENUHNYA dari IndexedDB — tidak ada panggilan ke
+ * server sama sekali. Cocok untuk lokasi tanpa sinyal.
+ */
 async function onScanSuccess(decodedText) {
   stopScanner();
   var qrId = extractQrId(decodedText);
@@ -235,42 +260,21 @@ async function onScanSuccess(decodedText) {
     return;
   }
 
-  resultBox.innerHTML = '<div class="empty-state">Memverifikasi...</div>';
-  var res = await callApiPublic("verifyQr", { qrId: qrId });
+  var record = await dbGetCardByQrId(qrId);
 
-  if (res.status !== "success" || !res.data.valid) {
-    var pesan = res.data ? res.data.pesan : (res.message || "Tidak valid");
-    resultBox.innerHTML = '<div class="alert alert-error show">🔴 ' + pesan + '</div>';
+  if (!record) {
+    resultBox.innerHTML = '<div class="alert alert-error show">🔴 Kartu tidak ditemukan di data tersimpan. Sambungkan internet dan sinkron ulang.</div>';
     return;
   }
 
-  resultBox.innerHTML = '<div class="alert alert-success show">🟢 Valid — kartu ditampilkan di bawah</div>';
+  var isActive = computeIsActive(record.tipe, record.data);
 
-  var engineType = res.data.jenis === "Anggota Tetap" ? "TETAP" : "TIM";
-  var cardData = {
-    nama: res.data.nama,
-    perusahaan: res.data.perusahaan,
-    noKta: res.data.noKta,
-    noHp: res.data.noHp,
-    fotoBase64: res.data.fotoBase64,
-    fotoMime: res.data.fotoMime,
-    instagram: res.data.instagram,
-    tiktok: res.data.tiktok,
-    linkLainnya: res.data.linkLainnya,
-    whatsapp: res.data.whatsapp,
-    berlakuSampai: res.data.berlakuSampai,
-    tipe: engineType
-  };
+  resultBox.innerHTML = isActive
+    ? '<div class="alert alert-success show">🟢 Valid & Aktif — kartu ditampilkan di bawah</div>'
+    : '<div class="alert alert-error show">🔴 Ditemukan, tapi TIDAK AKTIF</div>';
 
-  if (engineType === "TETAP") {
-    cardData.statusKartu = "AKTIF";
-  } else {
-    cardData.statusTampil = "AKTIF";
-  }
-
-  // verifyQr hasil scan kamera juga disimpan offline (pakai qrId sebagai id)
-  dbSaveCard(engineType, qrId, cardData);
-  displayCard(engineType, cardData, false);
+  var engineType = record.tipe === "TETAP" ? "TETAP" : "TIM";
+  displayCard(record.tipe, engineType, record.data, record.savedAt);
 }
 
 function extractQrId(text) {
@@ -283,7 +287,7 @@ function extractQrId(text) {
 }
 
 
-/* ================ DIRECTORY (POHON) — Smart Sync ================ */
+/* ================ DIRECTORY (POHON) — struktur tetap dari localStorage ================ */
 
 function loadDirectory() {
   var container = document.getElementById("directory-container");
@@ -295,57 +299,29 @@ function loadDirectory() {
     container.innerHTML = '<div class="empty-state">Memuat direktori...</div>';
   }
 
-  checkVersionAndMaybeSync(cache);
+  syncDirectoryStructure(cache);
 }
 
-async function checkVersionAndMaybeSync(cache) {
-  if (navigator.onLine === false) {
-    updateSyncIndicator("offline");
-    return;
-  }
+async function syncDirectoryStructure(cache) {
+  if (navigator.onLine === false) return;
 
   try {
     var verRes = await callApiPublic("getSyncVersion", {});
-
-    if (verRes.status !== "success") {
-      updateSyncIndicator(cache ? "offline" : "loading");
-      if (!cache) {
-        document.getElementById("directory-container").innerHTML =
-          '<div class="empty-state">' + (verRes.message || "Gagal memuat data.") + '</div>';
-      }
-      return;
-    }
+    if (verRes.status !== "success") return;
 
     var serverVersion = verRes.data.version;
-
-    if (cache && cache.version === serverVersion) {
-      updateSyncIndicator("online");
-      return;
-    }
+    if (cache && cache.version === serverVersion) return;
 
     var dirRes = await callApiPublic("getMemberDirectory", {});
+    if (dirRes.status !== "success") return;
 
-    if (dirRes.status !== "success") {
-      updateSyncIndicator(cache ? "offline" : "loading");
-      if (!cache) {
-        document.getElementById("directory-container").innerHTML =
-          '<div class="empty-state">' + (dirRes.message || "Gagal memuat data.") + '</div>';
-      }
-      return;
-    }
-
-    updateSyncIndicator("online");
-
-    if (dirRes.data.length === 0) {
-      document.getElementById("directory-container").innerHTML = '<div class="empty-state">Belum ada data.</div>';
-    } else {
+    if (dirRes.data.length > 0) {
       renderDirectory(dirRes.data);
     }
-
     writeDirectoryCache(serverVersion, dirRes.data);
 
   } catch (e) {
-    updateSyncIndicator(cache ? "offline" : "loading");
+    // gagal konek -> biarkan struktur lama tetap tampil
   }
 }
 
