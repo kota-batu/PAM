@@ -1,19 +1,22 @@
 /******************************************************************
  * FILE : anggota-public.js — logic khusus anggota.html
- * Sama arsitekturnya dengan vendor.js: sync sekali di awal (semua
- * data+foto ke IndexedDB), abis itu pilih nama baca dari IndexedDB,
- * tidak ada fetch lagi.
+ * FIX: tambah indikator sync (sebelumnya cuma ada di vendor.js) +
+ * auto-retry kalau user pilih nama SAAT sync masih berjalan
+ * (daripada langsung gagal dengan alert).
  * ================================================================ */
 
 var currentMode = "qr";
 var currentSelection = null;
+var cardAssetsReadyPromise = null;
+var syncPromise = null; // dipakai buat nunggu sync kelar kalau user kecepetan pilih nama
 
 const MEMBER_NAMES_CACHE_KEY = "pam_member_names_cache_v1";
 
 async function initMemberPage() {
   cardAssetsReadyPromise = preloadCardAssets();
+  updateSyncIndicator("checking");
 
-  await loadNameOptions(); // tampil dari cache localStorage (ringan, instan)
+  await loadNameOptions(); // dropdown nama (ringan, dari localStorage/API kecil)
 
   document.getElementById("member-select").addEventListener("change", handleSelectChange);
 
@@ -30,10 +33,43 @@ async function initMemberPage() {
     });
   });
 
-  await performSync(function () {}); // download semua kartu+foto ke IndexedDB di background
+  // Sync SEMUA kartu+foto ke IndexedDB (bisa agak lama di awal).
+  // Disimpan promise-nya supaya renderCurrentSelection() bisa nunggu
+  // kalau user sempat pilih nama SEBELUM ini selesai.
+  syncPromise = performSync(updateSyncIndicator);
+  await syncPromise;
 }
 
-var cardAssetsReadyPromise = null;
+function updateSyncIndicator(state) {
+  var dot = document.getElementById("sync-dot");
+  var text = document.getElementById("sync-text");
+  if (!dot || !text) return;
+
+  dot.classList.remove("online", "offline");
+
+  switch (state) {
+    case "checking":
+      text.textContent = "Memeriksa data...";
+      break;
+    case "syncing":
+      text.textContent = "Menyinkronkan data & foto...";
+      break;
+    case "done":
+    case "up-to-date":
+    case "online-idle":
+      dot.classList.add("online");
+      text.textContent = "Data tersinkron";
+      break;
+    case "offline":
+      dot.classList.add("offline");
+      text.textContent = "Offline — pakai data tersimpan";
+      break;
+    case "error":
+      dot.classList.add("offline");
+      text.textContent = "Gagal sinkron — pakai data tersimpan";
+      break;
+  }
+}
 
 async function loadNameOptions() {
   var select = document.getElementById("member-select");
@@ -45,7 +81,7 @@ async function loadNameOptions() {
     select.innerHTML = '<option value="">-- Memuat daftar... --</option>';
   }
 
-  checkNameVersionAndMaybeSync(cache, select); // tidak perlu ditunggu, biar UI gak nge-block
+  await checkNameVersionAndMaybeSync(cache, select);
 }
 
 async function checkNameVersionAndMaybeSync(cache, select) {
@@ -124,7 +160,9 @@ function computeIsActiveLocal(tipe, data) {
 }
 
 /**
- * 100% dari IndexedDB — tidak ada fetch ke server saat memilih nama.
+ * 100% dari IndexedDB. Kalau belum ketemu TAPI sync masih berjalan,
+ * tunggu sync selesai dulu lalu coba sekali lagi (mengatasi race
+ * condition: user pilih nama sebelum sync kelar).
  */
 async function renderCurrentSelection() {
   if (!currentSelection) return;
@@ -133,6 +171,16 @@ async function renderCurrentSelection() {
   var id = currentSelection.id;
 
   var record = await dbGetCard(tipe, id);
+
+  if (!record && syncPromise) {
+    var box = document.getElementById("display-box");
+    box.style.display = "block";
+    document.getElementById("offline-note").style.display = "block";
+    document.getElementById("offline-note").textContent = "Menyinkronkan data, mohon tunggu sebentar...";
+
+    await syncPromise;
+    record = await dbGetCard(tipe, id);
+  }
 
   if (!record) {
     alert("Data belum tersinkron. Sambungkan internet, lalu buka ulang halaman ini.");
