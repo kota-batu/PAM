@@ -38,6 +38,17 @@ async function initMemberPage() {
   // kalau user sempat pilih nama SEBELUM ini selesai.
   syncPromise = performSync(updateSyncIndicator);
   await syncPromise;
+
+  // PENTING (fix): kalau user SUDAH pilih nama SEBELUM sync ini selesai,
+  // dan kartunya kebetulan sudah ada di IndexedDB dari sync sebelumnya
+  // (walau basi), renderCurrentSelection() tadi langsung nampilin versi
+  // basi itu tanpa nunggu sync (lihat kondisi "if (!record && syncPromise)"
+  // di renderCurrentSelection — itu cuma nunggu kalau recordnya BELUM ADA
+  // sama sekali). Jadi render ulang di sini supaya data yang baru saja
+  // ke-download beneran tampil, bukan cache lama.
+  if (currentSelection) {
+    renderCurrentSelection();
+  }
 }
 
 function updateSyncIndicator(state) {
