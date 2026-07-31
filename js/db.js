@@ -247,7 +247,20 @@ async function performSync(statusCallback) {
       return { tipe: card.tipe, id: card.id, data: card };
     });
 
-    await dbSaveCardsBulk(items);
+    var saveOk = await dbSaveCardsBulk(items);
+
+    if (!saveOk) {
+      // PENTING (fix): dbSaveCardsBulk() menangkap error-nya sendiri dan
+      // cuma return false kalau gagal (tidak throw) — misal karena kuota
+      // penyimpanan IndexedDB penuh (transaksi ini nyimpen SEMUA foto
+      // sekaligus). Sebelumnya hasil ini diabaikan, jadi setLocalSyncVersion
+      // tetap jalan walau penyimpanan gagal total -> client mengira sudah
+      // sinkron padahal datanya lama/kosong, dan sync berikutnya selalu
+      // di-skip karena localVersion sudah "cocok" (padahal bohong).
+      report("error");
+      return { synced: false, reason: "save_failed" };
+    }
+
     setLocalSyncVersion(bulkRes.data.version);
 
     report("done");
