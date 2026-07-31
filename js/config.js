@@ -3,7 +3,7 @@
  * ================================================================ */
 
 // SAMA PERSIS dengan API_URL di situs PAM Finance (backend dipakai bersama)
-const API_URL = "https://script.google.com/macros/s/AKfycbwe4kdR_gje9Uj7ijf_CVURCx66Z6Ani_QeWXz7djAYLBfYIJFoVfmK0f6JIDyPWP6w/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwkKpTsQyktiztC8_dHZULOcgWwi_nF2uBIq8NsIDlpbvnLRqnaebN7h7EXjJN55GcL/exec";
 
 
 // GANTI dengan URL situs PAM Finance utama kamu (dipakai untuk generate link QR
