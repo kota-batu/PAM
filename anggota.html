@@ -20,6 +20,17 @@
       font-size: 12px;
       text-align: left;
     }
+    .sync-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ccc;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .sync-dot.online { background: #2ecc71; }
+    .sync-dot.offline { background: #e74c3c; }
   </style>
 </head>
 <body>
@@ -27,7 +38,9 @@
     <div class="page-header">
       <div>
         <h1>Kartu Saya</h1>
-        <div class="subtitle">Halaman Anggota</div>
+        <div class="subtitle">
+          <span class="sync-dot" id="sync-dot"></span><span id="sync-text">Memuat...</span>
+        </div>
       </div>
       <a href="pilih.html" class="btn btn-secondary btn-sm">← Kembali</a>
     </div>
