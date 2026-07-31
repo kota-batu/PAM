@@ -9,7 +9,7 @@
  * (v4 -> v5 -> dst), atau HP pengguna tetap pakai file lama.
  * ================================================================ */
 
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v6";
 const CACHE_NAME = "pam-app-shell-" + CACHE_VERSION;
 
 const PRECACHE_ASSETS = [
