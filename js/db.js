@@ -123,6 +123,46 @@ async function dbSaveCardsBulk(items) {
   }
 }
 
+/**
+ * REPLACE PENUH (bukan merge): hapus semua isi objectStore lalu isi ulang
+ * dengan `items`, dalam SATU transaksi atomik. Dipakai saat sync supaya
+ * IndexedDB selalu jadi salinan PERSIS dari server — tidak ada kartu lama
+ * yang "yatim" tertinggal (misal anggota yang sudah dihapus di server),
+ * dan tidak ada risiko campuran data lama+baru kalau sync sebelumnya
+ * gagal di tengah jalan. clear() dan semua put() ada dalam transaksi yang
+ * sama, jadi kalau salah satu gagal, SEMUANYA di-rollback otomatis oleh
+ * IndexedDB (tidak akan pernah ada kondisi "kehapus tapi belum keisi").
+ */
+async function dbReplaceAllCards(items) {
+  try {
+    var db = await openPamDb();
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(PAM_STORE_CARDS, "readwrite");
+      var store = tx.objectStore(PAM_STORE_CARDS);
+      var now = new Date().toISOString();
+
+      store.clear();
+
+      items.forEach(function (item) {
+        store.put({
+          cacheKey: buildCacheKey(item.tipe, item.id),
+          tipe: item.tipe,
+          id: item.id,
+          qrId: item.data && item.data.qrId ? item.data.qrId : null,
+          data: item.data,
+          savedAt: now
+        });
+      });
+
+      tx.oncomplete = function () { resolve(true); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  } catch (e) {
+    console.warn("dbReplaceAllCards gagal:", e);
+    return false;
+  }
+}
+
 async function dbGetCard(tipe, id) {
   try {
     var db = await openPamDb();
@@ -199,6 +239,21 @@ function setLocalSyncVersion(v) {
 /**
  * SATU fungsi sinkronisasi terpusat, dipakai vendor.js & anggota-public.js.
  *
+ * DESAIN (v3 — server sebagai source of truth penuh):
+ * - Server tidak cuma dipercaya soal nomor versi, tapi juga soal JUMLAH
+ *   kartu (totalCards). Kalau versi sama tapi jumlah lokal beda dari
+ *   server, tetap dipaksa sync ulang — jadi versi yang "kelihatan cocok"
+ *   tidak lagi cukup jadi bukti data lokal sudah lengkap/benar.
+ * - Sync selalu REPLACE penuh (dbReplaceAllCards: clear + insert dalam
+ *   satu transaksi atomik), bukan menambah/menimpa sebagian (put per-key).
+ *   Jadi IndexedDB selalu jadi salinan persis dari server: tidak ada
+ *   kartu lama yang ketinggalan, tidak ada kartu yang statusnya sudah
+ *   berubah di server tapi versi lama masih nyangkut di lokal.
+ * - localStorage (pam_sync_version) HANYA diupdate setelah replace
+ *   benar-benar sukses. Kalau replace gagal (mis. kuota IndexedDB penuh),
+ *   local version TIDAK diupdate, supaya sync berikutnya otomatis
+ *   mencoba lagi dari awal — bukan dianggap "sudah sinkron" secara keliru.
+ *
  * statusCallback(state) dipanggil dengan salah satu:
  *   "offline"  -> tidak ada internet, sync dilewati, pakai data lama
  *   "checking" -> lagi cek versi (cepat)
@@ -227,10 +282,21 @@ async function performSync(statusCallback) {
     }
 
     var serverVersion = verRes.data.version;
+    var serverTotalCards = verRes.data.totalCards;
     var localVersion = getLocalSyncVersion();
     var existingCount = await dbCountCards();
 
-    if (localVersion === serverVersion && existingCount > 0) {
+    // PENTING (fix): dulu cuma cek localVersion === serverVersion. Itu
+    // tidak cukup — versi bisa "cocok" walau IndexedDB sebenarnya tidak
+    // lengkap (misal sync sebelumnya gagal di tengah jalan sebelum fix
+    // ini ada). Sekarang jumlah kartu lokal WAJIB sama dengan jumlah di
+    // server juga, baru boleh skip.
+    var versionMatches = localVersion === serverVersion;
+    var countMatches = typeof serverTotalCards === "number"
+      ? existingCount === serverTotalCards
+      : existingCount > 0; // fallback kalau server lama belum kirim totalCards
+
+    if (versionMatches && countMatches) {
       report("up-to-date");
       return { synced: false, reason: "up-to-date", cardCount: existingCount };
     }
@@ -247,19 +313,28 @@ async function performSync(statusCallback) {
       return { tipe: card.tipe, id: card.id, data: card };
     });
 
-    var saveOk = await dbSaveCardsBulk(items);
+    if (typeof bulkRes.data.totalExpected === "number" && items.length !== bulkRes.data.totalExpected) {
+      console.warn(
+        "Sync: server cuma berhasil kirim " + items.length + " dari " +
+        bulkRes.data.totalExpected + " kartu yang seharusnya ada. " +
+        "Kemungkinan ada anggota yang fotonya gagal diambil di server."
+      );
+    }
+
+    // Replace PENUH, bukan merge -> IndexedDB jadi salinan persis server.
+    var saveOk = await dbReplaceAllCards(items);
 
     if (!saveOk) {
-      // PENTING (fix): dbSaveCardsBulk() menangkap error-nya sendiri dan
-      // cuma return false kalau gagal (tidak throw) — misal karena kuota
-      // penyimpanan IndexedDB penuh (transaksi ini nyimpen SEMUA foto
-      // sekaligus). Sebelumnya hasil ini diabaikan, jadi setLocalSyncVersion
-      // tetap jalan walau penyimpanan gagal total -> client mengira sudah
-      // sinkron padahal datanya lama/kosong, dan sync berikutnya selalu
-      // di-skip karena localVersion sudah "cocok" (padahal bohong).
+      // dbReplaceAllCards() menangkap error-nya sendiri dan cuma return
+      // false kalau gagal (mis. kuota penyimpanan IndexedDB penuh -- ini
+      // makin mungkin terjadi karena replace penuh nyimpen SEMUA foto
+      // sekaligus dalam satu transaksi). local version SENGAJA TIDAK
+      // diupdate di sini, supaya sync berikutnya otomatis coba lagi dari
+      // awal, bukan dianggap sudah sinkron padahal gagal.
       report("error");
       return { synced: false, reason: "save_failed" };
     }
+
 
     setLocalSyncVersion(bulkRes.data.version);
 
