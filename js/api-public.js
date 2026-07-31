@@ -1,6 +1,16 @@
 /******************************************************************
  * FILE : api-public.js — situs "Anggota Aktif PAM"
+ * Perubahan: LOGIN DIHAPUS. PIN diisi otomatis dari kode (AUTO_PIN),
+ * tersimpan di localStorage sejak pertama kali dibuka. requirePin()
+ * TIDAK PERNAH redirect ke index.html lagi — murni cek lokal, tidak
+ * ada request ke internet sama sekali untuk tahap ini.
+ *
+ * PENTING: ganti nilai AUTO_PIN di bawah supaya SAMA PERSIS dengan
+ * nilai VENDOR_SITE_PIN di sheet SETTINGS kamu, kalau tidak, request
+ * ke Apps Script akan ditolak (INVALID_PIN).
  * ================================================================ */
+
+const AUTO_PIN = "123456"; // GANTI sesuai VENDOR_SITE_PIN di sheet SETTINGS
 
 async function callApiPublic(action, params) {
   params = params || {};
@@ -28,24 +38,30 @@ async function callApiPublic(action, params) {
 }
 
 function saveSitePin(pin) {
-  sessionStorage.setItem(PIN_STORAGE_KEY, pin);
+  localStorage.setItem(PIN_STORAGE_KEY, pin);
 }
 
 function getSitePin() {
-  return sessionStorage.getItem(PIN_STORAGE_KEY);
+  var pin = localStorage.getItem(PIN_STORAGE_KEY);
+  if (!pin) {
+    pin = AUTO_PIN;
+    saveSitePin(pin);
+  }
+  return pin;
 }
 
 function clearSitePin() {
-  sessionStorage.removeItem(PIN_STORAGE_KEY);
+  localStorage.removeItem(PIN_STORAGE_KEY);
 }
 
+/**
+ * Dulu: redirect ke index.html kalau belum login.
+ * Sekarang: PIN selalu ada (auto-fill), jadi TIDAK PERNAH redirect.
+ * Fungsi ini sengaja dibiarkan ada (bukan dihapus) supaya vendor.html
+ * / anggota.html yang masih manggil requirePin() tidak perlu diubah.
+ */
 function requirePin() {
-  var pin = getSitePin();
-  if (!pin) {
-    window.location.href = "index.html";
-    return null;
-  }
-  return pin;
+  return getSitePin();
 }
 
 function formatTanggalWaktuIndo(dateStr) {
